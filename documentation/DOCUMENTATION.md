@@ -1,4 +1,4 @@
-# 🫧 As Clear as Pearl — Complete Project Documentation
+# As Clear as Pearl — Complete Project Documentation
 
 ## Lahore AQI Prediction & Intelligence System
 
