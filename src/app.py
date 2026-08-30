@@ -18,15 +18,15 @@ from src.config import (
     API_HOST, API_PORT, AQI_LEVELS, AQI_HEALTH_RECOMMENDATIONS,
     POLLUTANT_FEATURES, WEATHER_FEATURES, TARGET, DATA_DIR, MODELS_DIR, SHAP_DIR
 )
+ICON_PATH = PROJECT_ROOT / "assets" / "logo.png"
 
 # Page Configuration
 st.set_page_config(
     page_title='As Clear as Pearl',
-    page_icon='🫧',
+    page_icon=str(ICON_PATH),
     layout='wide',
     initial_sidebar_state='expanded'
 )
-
 # Custom CSS Theme
 st.markdown("""
     <style>
@@ -170,7 +170,6 @@ api_status = False
 
 # Sidebar
 with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Lahore_Fort_View.jpg/640px-Lahore_Fort_View.jpg", use_container_width=True)
     st.markdown("### Controls")
     
     if st.button("Refresh Data"):
