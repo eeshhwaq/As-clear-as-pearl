@@ -18,6 +18,9 @@ from src.config import (
     API_HOST, API_PORT, AQI_LEVELS, AQI_HEALTH_RECOMMENDATIONS,
     POLLUTANT_FEATURES, WEATHER_FEATURES, TARGET, DATA_DIR, MODELS_DIR, SHAP_DIR
 )
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 ICON_PATH = PROJECT_ROOT / "assets" / "logo.png"
 
 # Page Configuration
