@@ -1,4 +1,4 @@
-# 🫧 As Clear as Pearl
+# As Clear as Pearl
 
 > Serverless AQI prediction system for Lahore, Pakistan.
 
@@ -9,7 +9,7 @@
 
 Lahore frequently experiences severe air pollution and smog, especially during the winter months. **As Clear as Pearl** is a machine learning pipeline that predicts Air Quality Index (AQI) up to 72 hours in advance, providing actionable health alerts.
 
-## 🏗️ Architecture
+##  Architecture
 
 ```mermaid
 graph TD
@@ -28,7 +28,7 @@ graph TD
     end
 ```
 
-## ✨ Features
+##  Features
 
 - **Serverless Architecture**: Feature and training pipelines run automatically on GitHub Actions.
 - **Hopsworks Integration**: Centralized feature store and model registry.
@@ -37,7 +37,7 @@ graph TD
 - **Stunning UI**: Premium dark-themed dashboard with glassmorphism and interactive Plotly charts.
 - **Health Alerts**: Context-aware recommendations based on predicted AQI levels.
 
-## 🚀 Setup
+## Setup
 
 1. **Clone the repository:**
    ```bash
@@ -60,7 +60,7 @@ graph TD
    HOPSWORKS_PROJECT_NAME=your_project_name
    ```
 
-## 💻 Usage
+##  Usage
 
 ### Run Pipelines Locally
 ```bash
@@ -82,7 +82,7 @@ python -m src.training_pipeline
    streamlit run src/app.py
    ```
 
-## 📂 Project Structure
+##  Project Structure
 
 ```text
 as-clear-as-pearl/
@@ -99,13 +99,7 @@ as-clear-as-pearl/
 │   ├── feature_pipeline.py
 │   ├── training_pipeline.py
 │   └── api.py             # FastAPI backend
+├── documentation/
+│   ├── documentation.doc 
 └── README.md
 ```
-
-## 📸 Screenshots
-
-*(Add screenshots of the dashboard here)*
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
