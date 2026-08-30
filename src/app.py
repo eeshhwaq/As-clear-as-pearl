@@ -171,25 +171,25 @@ api_status = False
 # Sidebar
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Lahore_Fort_View.jpg/640px-Lahore_Fort_View.jpg", use_container_width=True)
-    st.markdown("### 🎛️ Controls")
+    st.markdown("### Controls")
     
-    if st.button("🔄 Refresh Data"):
+    if st.button("Refresh Data"):
         st.cache_data.clear()
         st.rerun()
         
     model_choice = st.selectbox("Select Model", ["XGBoost", "LinearRegression", "LSTM", "GRU"])
     date_range = st.date_input("Historical View Range", [datetime.date.today() - datetime.timedelta(days=30), datetime.date.today()])
     
-    st.markdown("### ℹ️ About")
+    st.markdown("### About")
     st.info("Serverless AQI prediction system for Lahore, Pakistan. Built with Streamlit, FastAPI, Hopsworks, and GitHub Actions.")
 
 # Main Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊 Live Dashboard", 
-    "🔬 EDA & Trends", 
-    "🤖 Model Comparison", 
-    "🔍 SHAP Explanations", 
-    "⚠️ Alerts & Health"
+    " Live Dashboard", 
+    " EDA & Trends", 
+    " Model Comparison", 
+    " SHAP Explanations", 
+    " Alerts & Health"
 ])
 
 with tab1:
@@ -235,7 +235,7 @@ with tab1:
             """, unsafe_allow_html=True)
             
         # Charts Row
-        st.markdown("### 📈 AQI Forecast (Next 72 Hours)")
+        st.markdown("### AQI Forecast (Next 72 Hours)")
         
         # Mock forecast data for visualization if not available
         dates = pd.date_range(start=pd.Timestamp.now(), periods=72, freq='h')

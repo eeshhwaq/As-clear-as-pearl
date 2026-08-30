@@ -23,7 +23,9 @@
 15. [Exploratory Data Analysis (EDA)](#15-exploratory-data-analysis-eda)
 16. [Project File Map — What Lives Where](#16-project-file-map--what-lives-where)
 17. [How to Run the Project](#17-how-to-run-the-project)
-18. [Requirement Traceability Matrix](#18-requirement-traceability-matrix)
+18. [Troubleshooting — Common Issues & Fixes](#18-troubleshooting--common-issues--fixes)
+19. [Deployment — Streamlit Community Cloud](#19-deployment--streamlit-community-cloud)
+20. [Requirement Traceability Matrix](#20-requirement-traceability-matrix)
 
 ---
 
@@ -711,8 +713,10 @@ cd C:\Users\Easha\.gemini\antigravity\scratch\as-clear-as-pearl
 
 ### 2. Install all dependencies
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-full.txt
 ```
+
+> **⚠️ Windows Users**: If `hopsworks` fails to install due to `twofish`, see [Section 18: Troubleshooting](#18-troubleshooting--common-issues--fixes) below.
 
 ### 3. Configure API keys
 Open `.env` and verify:
@@ -754,7 +758,157 @@ Generates 10 analytical plots in `data/eda_plots/`.
 
 ---
 
-# 18. Requirement Traceability Matrix
+# 18. Troubleshooting — Common Issues & Fixes
+
+## 18.1 Hopsworks `twofish` Build Error (Windows)
+
+**Symptom:**
+```
+error: Microsoft Visual C++ 14.0 or greater is required.
+  ERROR: Failed building wheel for twofish
+```
+
+**Cause:** Hopsworks depends on `twofish`, a C extension that requires a C compiler. Windows doesn't ship with one by default.
+
+**Fix 1 — Conda (Recommended, fastest)**
+```bash
+# Create a conda environment
+conda create -n pearl python=3.11
+conda activate pearl
+
+# Install twofish via conda (pre-compiled binary, no compiler needed)
+conda install twofish
+
+# Now install everything else via pip
+pip install -r requirements-full.txt
+```
+
+**Fix 2 — Install Microsoft C++ Build Tools**
+1. Download **[Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)**
+2. Run the installer → select **"Desktop development with C++"**
+3. Restart your terminal
+4. Run `pip install -r requirements-full.txt` again
+
+**Fix 3 — Skip Hopsworks entirely**
+If you don't need the feature store (local-only mode), remove `hopsworks` from `requirements-full.txt`. The system automatically falls back to local CSV files when Hopsworks is not available.
+
+## 18.2 TensorFlow Installation Issues
+
+- Use Python **3.10 or 3.11** (TensorFlow may not support 3.13+ yet)
+- On older GPUs or CPU-only machines, use `tensorflow-cpu` instead of `tensorflow`
+
+## 18.3 "No data available" on Dashboard
+
+Run the feature pipeline first to bootstrap data:
+```bash
+python -m src.feature_pipeline --backfill --days 365
+```
+
+## 18.4 OpenAQ API Rate Limits
+
+OpenAQ allows ~100 requests/minute with a free API key. The data fetcher includes 1-second delays between requests, but if you encounter 429 errors, wait a few minutes and retry.
+
+---
+
+# 19. Deployment — Streamlit Community Cloud
+
+The project is deployed to **Streamlit Community Cloud** — a free hosting platform for Streamlit apps.
+
+## Why Streamlit Cloud?
+
+| Factor | Detail |
+|--------|--------|
+| **Cost** | Completely free |
+| **Setup time** | Under 5 minutes |
+| **Requirements** | Just a GitHub repo with a Streamlit app |
+| **SSL** | Automatic HTTPS |
+| **Custom URL** | `your-app-name.streamlit.app` |
+| **Auto-deploy** | Pushes to `main` trigger automatic redeployment |
+
+## How It Was Set Up
+
+### Step 1: Requirements Split
+
+The project uses **two requirements files**:
+
+| File | Purpose | Used By |
+|------|---------|---------|
+| `requirements.txt` | **Lightweight** — only dashboard dependencies (streamlit, pandas, plotly, etc.) | Streamlit Cloud |
+| `requirements-full.txt` | **Complete** — includes TensorFlow, XGBoost, scikit-learn, hopsworks, SHAP | Local development, GitHub Actions |
+
+This split is critical because Streamlit Cloud has limited memory. The dashboard only reads CSV files and displays plots — it doesn't need TensorFlow or XGBoost at runtime.
+
+### Step 2: Streamlit Theme Configuration
+
+File: `.streamlit/config.toml`
+```toml
+[theme]
+primaryColor = "#c4b5fd"          # Iridescent purple
+backgroundColor = "#0a0a0f"       # Deep dark
+secondaryBackgroundColor = "#111118"
+textColor = "#f0f0f5"             # Pearl white
+font = "sans serif"
+
+[server]
+headless = true
+port = 8501
+
+[browser]
+gatherUsageStats = false
+```
+
+### Step 3: Deploy via Streamlit Community Cloud
+
+1. Go to **[share.streamlit.io](https://share.streamlit.io)**
+2. Sign in with GitHub
+3. Click **"New app"**
+4. Configure:
+
+| Field | Value |
+|-------|-------|
+| Repository | `eeshhwaq/As-clear-as-pearl` |
+| Branch | `main` |
+| Main file path | `src/app.py` |
+
+5. Click **"Advanced settings"** → paste secrets:
+```toml
+OPENAQ_API_KEY = "your_openaq_key"
+HOPSWORKS_API_KEY = "your_hopsworks_key"
+HOPSWORKS_PROJECT_NAME = "your_project_name"
+```
+
+6. Click **Deploy!**
+
+### Step 4: Verify
+
+After ~2 minutes, the app will be live at:
+```
+https://eeshhwaq-as-clear-as-pearl-srcapp-xxxxx.streamlit.app
+```
+
+### How Updates Work
+
+Every `git push` to the `main` branch automatically triggers a redeployment on Streamlit Cloud. The CI/CD pipeline (GitHub Actions) handles data and model updates, while the dashboard always reads the latest available data.
+
+### Architecture After Deployment
+
+```
+GitHub Actions (hourly/daily)
+    |
+    v
+Hopsworks Feature Store + Model Registry
+    |
+    v
+Streamlit Community Cloud (dashboard)
+    |
+    reads from
+    v
+Local data cache + SHAP plots (committed to repo or fetched at runtime)
+```
+
+---
+
+# 20. Requirement Traceability Matrix
 
 Every requirement from the original project brief, mapped to where and how it was implemented:
 
