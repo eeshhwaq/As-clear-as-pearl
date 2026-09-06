@@ -98,9 +98,15 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     # 4. Handle NaNs
     # Drop rows where target (aqi) is NaN
     df = df.dropna(subset=['aqi'])
+
+    # Some stations expose only a subset of pollutants. Keep those rows and
+    # use zero for pollutant inputs that are unavailable for the whole batch.
+    for pollutant in ['pm25', 'pm10', 'o3', 'no2', 'so2', 'co']:
+        if pollutant in df.columns and df[pollutant].isna().all():
+            df[pollutant] = 0.0
     
     # Forward-fill remaining NaN features
-    df = df.ffill()
+    df = df.ffill().bfill()
     
     # Drop any remaining NaN rows
     df = df.dropna()

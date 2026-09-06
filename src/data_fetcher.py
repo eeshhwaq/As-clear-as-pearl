@@ -42,7 +42,7 @@ class OpenAQClient:
             params = {
                 "coordinates": f"{lat},{lon}",
                 "radius": radius,
-                "limit": 100
+                "limit": 10
             }
             try:
                 response = requests.get(url, headers=self.headers, params=params)
@@ -53,7 +53,7 @@ class OpenAQClient:
                     if loc_id not in seen_ids:
                         seen_ids.add(loc_id)
                 if seen_ids:
-                    return list(seen_ids)
+                    return list(seen_ids)[:10]
             except Exception as e:
                 logger.warning(f"OpenAQ location search with radius {radius} failed: {e}")
 
@@ -82,6 +82,13 @@ class OpenAQClient:
         }
         try:
             response = requests.get(url, headers=self.headers, params=params)
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After", "5")
+                try:
+                    time.sleep(min(float(retry_after), 30))
+                except ValueError:
+                    time.sleep(5)
+                response = requests.get(url, headers=self.headers, params=params)
             if response.status_code == 404:
                 return []
             response.raise_for_status()
@@ -105,7 +112,7 @@ class OpenAQClient:
             return pd.DataFrame(columns=['datetime'] + POLLUTANT_FEATURES)
 
         valid_param_names = {self._normalize_param_name(p) for p in POLLUTANT_FEATURES}
-        sensor_map = {param: [] for param in POLLUTANT_FEATURES}
+        sensor_candidates = {param: [] for param in POLLUTANT_FEATURES}
 
         for loc_id in locations:
             sensors = self.get_location_sensors(loc_id)
@@ -115,8 +122,21 @@ class OpenAQClient:
                 if normalized in valid_param_names:
                     matched_param = next(p for p in POLLUTANT_FEATURES if self._normalize_param_name(p) == normalized)
                     sensor_id = sensor.get("id")
-                    if sensor_id is not None and sensor_id not in sensor_map[matched_param]:
-                        sensor_map[matched_param].append(sensor_id)
+                    if sensor_id is not None:
+                        sensor_candidates[matched_param].append(sensor)
+
+        # Use the freshest sensor for each pollutant to keep a year-long
+        # backfill within OpenAQ rate limits while avoiding duplicate stations.
+        sensor_map = {}
+        for param, candidates in sensor_candidates.items():
+            if candidates:
+                selected = max(
+                    candidates,
+                    key=lambda sensor: sensor.get("datetimeLast", {}).get("utc", ""),
+                )
+                sensor_map[param] = [selected["id"]]
+            else:
+                sensor_map[param] = []
 
         if not any(sensor_map.values()):
             logger.warning("No valid pollutant sensors were found in Lahore OpenAQ data. Returning empty dataset.")

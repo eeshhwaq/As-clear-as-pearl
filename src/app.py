@@ -41,7 +41,7 @@ st.markdown("""
             --card-bg: rgba(255, 255, 255, 0.03);
             --card-border: rgba(255, 255, 255, 0.08);
             --text-primary: #f0f0f5;
-            --accent-blue: #a8c6df;
+            --accent-blue: #5170ff;
             --accent-purple: #c4b5fd;
             --accent-rose: #e8b4b8;
         }
@@ -162,7 +162,11 @@ def get_aqi_info(aqi):
     return AQI_LEVELS[-1]
 
 # Header
-st.markdown('<h1 class="gradient-text">🫧 As Clear as Pearl</h1>', unsafe_allow_html=True)
+header_logo, header_text = st.columns([0.12, 0.88], vertical_alignment="center")
+with header_logo:
+    st.image(str(ICON_PATH), width=86)
+with header_text:
+    st.markdown('<h1 class="gradient-text">As Clear as Pearl</h1>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Lahore Air Quality Intelligence System</p>', unsafe_allow_html=True)
 
 # Data loading
@@ -272,7 +276,7 @@ with tab1:
         )
         st.plotly_chart(fig, use_container_width=True)
         
-        st.markdown("### 🕰️ Historical Trend (30 Days)")
+        st.markdown("### Historical Trend (30 Days)")
         if 'timestamp' in df.columns:
             recent_df = df.tail(720) # Approx 30 days
             fig2 = px.line(recent_df, x='timestamp', y='aqi', 

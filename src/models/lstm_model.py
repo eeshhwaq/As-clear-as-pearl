@@ -60,13 +60,17 @@ class LSTMModel:
         logger.info(f"Training {self.get_name()}...")
         
         # Scale data
-        X_train_scaled = self.feature_scaler.fit_transform(X_train)
+        X_train_scaled = self.feature_scaler.fit_transform(
+            X_train.reshape(-1, X_train.shape[-1])
+        ).reshape(X_train.shape)
         y_train_scaled = self.target_scaler.fit_transform(y_train.reshape(-1, 1)).flatten()
         
         X_train_seq, y_train_seq = self.prepare_sequences(X_train_scaled, y_train_scaled)
         
         if X_val is not None and y_val is not None:
-            X_val_scaled = self.feature_scaler.transform(X_val)
+            X_val_scaled = self.feature_scaler.transform(
+                X_val.reshape(-1, X_val.shape[-1])
+            ).reshape(X_val.shape)
             y_val_scaled = self.target_scaler.transform(y_val.reshape(-1, 1)).flatten()
             X_val_seq, y_val_seq = self.prepare_sequences(X_val_scaled, y_val_scaled)
             validation_data = (X_val_seq, y_val_seq)
@@ -106,7 +110,9 @@ class LSTMModel:
         if len(X) <= self.seq_length:
             return np.array([])
             
-        X_scaled = self.feature_scaler.transform(X)
+        X_scaled = self.feature_scaler.transform(
+            X.reshape(-1, X.shape[-1])
+        ).reshape(X.shape)
         X_seq = self.prepare_sequences(X_scaled)
         
         preds_scaled = self.model.predict(X_seq, verbose=0)

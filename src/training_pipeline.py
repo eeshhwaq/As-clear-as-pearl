@@ -63,6 +63,11 @@ def load_training_data(use_cloud: bool = True) -> pd.DataFrame:
 
     # Local fallback
     file_path = DATA_DIR / "engineered_features.csv"
+    if not file_path.exists():
+        raise FileNotFoundError(
+            f"Training data not found at {file_path}. "
+            "Run the feature pipeline successfully before training."
+        )
     logger.info(f"Loading data from {file_path}")
     df = pd.read_csv(file_path)
     if "timestamp" in df.columns:
