@@ -27,140 +27,197 @@ class OpenAQClient:
     def __init__(self):
         self.headers = {"X-API-Key": OPENAQ_API_KEY} if OPENAQ_API_KEY else {}
 
-    def find_locations(self, lat=LAHORE_LAT, lon=LAHORE_LON, radius_m=OPENAQ_SEARCH_RADIUS_M):
-        url = f"{OPENAQ_BASE_URL}/locations"
-        params = {
-            "coordinates": f"{lat},{lon}",
-            "radius": radius_m,
-            "limit": 100
-        }
-        try:
-            response = requests.get(url, headers=self.headers, params=params)
-            response.raise_for_status()
-            data = response.json().get("results", [])
-            return [loc["id"] for loc in data]
-        except Exception as e:
-            logger.error(f"Error finding locations: {e}")
-            return []
+    @staticmethod
+    def _normalize_param_name(name):
+        if not name:
+            return ""
+        return name.lower().replace(" ", "").replace("_", "")
 
-    def get_measurements(self, location_id, parameter, date_from, date_to, page=1, limit=1000):
-        url = f"{OPENAQ_BASE_URL}/locations/{location_id}/measurements"
-        params = {
-            "parameter": parameter,
-            "date_from": date_from,
-            "date_to": date_to,
-            "page": page,
-            "limit": limit
-        }
+    def find_locations(self, lat=LAHORE_LAT, lon=LAHORE_LON, radius_m=OPENAQ_SEARCH_RADIUS_M):
+        radii = [radius_m, 10000, 5000]
+        seen_ids = set()
+
+        for radius in radii:
+            url = f"{OPENAQ_BASE_URL}/locations"
+            params = {
+                "coordinates": f"{lat},{lon}",
+                "radius": radius,
+                "limit": 100
+            }
+            try:
+                response = requests.get(url, headers=self.headers, params=params)
+                response.raise_for_status()
+                data = response.json().get("results", [])
+                ids = [loc["id"] for loc in data if loc.get("id") is not None]
+                for loc_id in ids:
+                    if loc_id not in seen_ids:
+                        seen_ids.add(loc_id)
+                if seen_ids:
+                    return list(seen_ids)
+            except Exception as e:
+                logger.warning(f"OpenAQ location search with radius {radius} failed: {e}")
+
+        logger.warning("No OpenAQ locations found near Lahore with the configured search radius.")
+        return []
+
+    def get_location_sensors(self, location_id):
+        url = f"{OPENAQ_BASE_URL}/locations/{location_id}/sensors"
         try:
-            response = requests.get(url, headers=self.headers, params=params)
+            response = requests.get(url, headers=self.headers)
+            if response.status_code == 404:
+                return []
             response.raise_for_status()
             return response.json().get("results", [])
         except Exception as e:
-            logger.error(f"Error getting measurements for {location_id}, param {parameter}: {e}")
+            logger.warning(f"Unable to fetch sensors for location {location_id}: {e}")
+            return []
+
+    def get_sensor_measurements(self, sensor_id, parameter, date_from, date_to, page=1, limit=1000):
+        url = f"{OPENAQ_BASE_URL}/sensors/{sensor_id}/hours"
+        params = {
+            "datetime_from": date_from,
+            "datetime_to": date_to,
+            "page": page,
+            "limit": limit,
+        }
+        try:
+            response = requests.get(url, headers=self.headers, params=params)
+            if response.status_code == 404:
+                return []
+            response.raise_for_status()
+            return response.json().get("results", [])
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 404:
+                return []
+            logger.warning(f"OpenAQ sensor request failed for sensor {sensor_id}, param {parameter}: {e}")
+            return []
+        except Exception as e:
+            logger.warning(f"OpenAQ request error for sensor {sensor_id}, param {parameter}: {e}")
             return []
 
     def fetch_historical_data(self, days=365):
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)
-        
+
         locations = self.find_locations()
         if not locations:
             logger.warning("No locations found near Lahore.")
             return pd.DataFrame(columns=['datetime'] + POLLUTANT_FEATURES)
-            
+
+        valid_param_names = {self._normalize_param_name(p) for p in POLLUTANT_FEATURES}
+        sensor_map = {param: [] for param in POLLUTANT_FEATURES}
+
+        for loc_id in locations:
+            sensors = self.get_location_sensors(loc_id)
+            for sensor in sensors:
+                sensor_param = sensor.get("parameter", {}).get("name", "")
+                normalized = self._normalize_param_name(sensor_param)
+                if normalized in valid_param_names:
+                    matched_param = next(p for p in POLLUTANT_FEATURES if self._normalize_param_name(p) == normalized)
+                    sensor_id = sensor.get("id")
+                    if sensor_id is not None and sensor_id not in sensor_map[matched_param]:
+                        sensor_map[matched_param].append(sensor_id)
+
+        if not any(sensor_map.values()):
+            logger.warning("No valid pollutant sensors were found in Lahore OpenAQ data. Returning empty dataset.")
+            return pd.DataFrame(columns=['datetime'] + POLLUTANT_FEATURES)
+
         all_data = []
-        parameters = POLLUTANT_FEATURES
-        
-        # Batch in 30-day chunks
         current_start = start_date
+
         while current_start < end_date:
             current_end = min(current_start + timedelta(days=30), end_date)
-            date_from_str = current_start.isoformat()
-            date_to_str = current_end.isoformat()
-            
-            logger.info(f"Fetching OpenAQ data from {date_from_str} to {date_to_str}")
-            
-            for loc_id in locations:
-                for param in parameters:
+            date_from_str = current_start.strftime("%Y-%m-%dT%H:%M:%SZ")
+            date_to_str = current_end.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            logger.info(f"Fetching OpenAQ sensor data from {date_from_str} to {date_to_str}")
+
+            for param in POLLUTANT_FEATURES:
+                for sensor_id in sensor_map.get(param, []):
                     page = 1
                     while True:
-                        results = self.get_measurements(loc_id, param, date_from_str, date_to_str, page=page)
+                        results = self.get_sensor_measurements(sensor_id, param, date_from_str, date_to_str, page=page)
                         if not results:
                             break
-                        
+
                         for r in results:
-                            dt = r.get("period", {}).get("datetimeFrom")
-                            if dt:
-                                dt = dt.get("utc", dt)
-                            if not dt:
+                            dt = r.get("period", {}).get("datetimeFrom", {}).get("utc")
+                            value = r.get("value")
+                            if dt is None or value is None:
                                 continue
-                            all_data.append({
-                                "datetime": pd.to_datetime(dt).tz_convert(None).replace(minute=0, second=0, microsecond=0),
-                                param: r.get("value")
-                            })
-                        
+                            dt_obj = pd.to_datetime(dt).tz_convert(None).replace(minute=0, second=0, microsecond=0)
+                            all_data.append({"datetime": dt_obj, param: value})
+
                         if len(results) < 1000:
                             break
                         page += 1
-                        time.sleep(1) # Rate limiting
+                        time.sleep(1)
                     time.sleep(1)
-                    
+
             current_start = current_end
-            
+
         if not all_data:
             return pd.DataFrame(columns=['datetime'] + POLLUTANT_FEATURES)
-            
+
         df = pd.DataFrame(all_data)
-        df = df.groupby('datetime').mean().reset_index()
-        
-        # Ensure all columns exist
+        df = df.groupby('datetime').mean(numeric_only=True).reset_index()
+
         for param in POLLUTANT_FEATURES:
             if param not in df.columns:
                 df[param] = None
-                
+
+        df = df.sort_values('datetime').reset_index(drop=True)
         df.to_csv(DATA_DIR / 'openaq_cache.csv', index=False)
         return df
 
     def fetch_latest(self):
         end_date = datetime.now()
         start_date = end_date - timedelta(hours=24)
-        
+
         locations = self.find_locations()
         all_data = []
+
         for loc_id in locations:
-            for param in POLLUTANT_FEATURES:
-                results = self.get_measurements(loc_id, param, start_date.isoformat(), end_date.isoformat(), limit=100)
+            sensors = self.get_location_sensors(loc_id)
+            for sensor in sensors:
+                sensor_param = sensor.get("parameter", {}).get("name", "")
+                normalized = self._normalize_param_name(sensor_param)
+                matched_param = next((p for p in POLLUTANT_FEATURES if self._normalize_param_name(p) == normalized), None)
+                if matched_param is None:
+                    continue
+
+                sensor_id = sensor.get("id")
+                if sensor_id is None:
+                    continue
+
+                results = self.get_sensor_measurements(sensor_id, matched_param, start_date.strftime("%Y-%m-%dT%H:%M:%SZ"), end_date.strftime("%Y-%m-%dT%H:%M:%SZ"), limit=100)
                 for r in results:
-                    dt = r.get("period", {}).get("datetimeFrom")
-                    if dt:
-                        dt = dt.get("utc", dt)
-                    if not dt:
+                    dt = r.get("period", {}).get("datetimeFrom", {}).get("utc")
+                    value = r.get("value")
+                    if dt is None or value is None:
                         continue
                     all_data.append({
                         "datetime": pd.to_datetime(dt).tz_convert(None).replace(minute=0, second=0, microsecond=0),
-                        param: r.get("value")
+                        matched_param: value,
                     })
                 time.sleep(1)
-                
+
         if not all_data:
             df = pd.DataFrame(columns=['datetime'] + POLLUTANT_FEATURES)
             df.loc[0, 'datetime'] = pd.Timestamp.now().replace(minute=0, second=0, microsecond=0)
             for p in POLLUTANT_FEATURES:
                 df[p] = None
             return df
-            
+
         df = pd.DataFrame(all_data)
-        df = df.groupby('datetime').mean().reset_index()
-        # Ensure all columns exist
+        df = df.groupby('datetime').mean(numeric_only=True).reset_index()
         for param in POLLUTANT_FEATURES:
             if param not in df.columns:
                 df[param] = None
-                
-        # Return only the latest hour
+
         if not df.empty:
             df = df.sort_values('datetime').tail(1).reset_index(drop=True)
-            
+
         return df
 
 

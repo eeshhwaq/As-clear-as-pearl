@@ -1,105 +1,102 @@
-# As Clear as Pearl
+# 🫧 As Clear as Pearl
 
-> Serverless AQI prediction system for Lahore, Pakistan.
+**Lahore Air Quality Index (AQI) Prediction & Intelligence System**
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.11-blue.svg)
-![Streamlit](https://img.shields.io/badge/streamlit-1.32.0-red.svg)
-![FastAPI](https://img.shields.io/badge/fastapi-0.110.0-green.svg)
+[![Streamlit](https://img.shields.io/badge/Dashboard-Streamlit-FF4B4B?logo=streamlit)](https://share.streamlit.io)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)](https://python.org)
+[![TensorFlow](https://img.shields.io/badge/TensorFlow-2.15-FF6F00?logo=tensorflow)](https://tensorflow.org)
+[![XGBoost](https://img.shields.io/badge/XGBoost-2.0-blue)](https://xgboost.readthedocs.io)
+[![Vertex AI](https://img.shields.io/badge/Vertex_AI-GCS-4285F4?logo=googlecloud)](https://cloud.google.com/vertex-ai)
 
-Lahore frequently experiences severe air pollution and smog, especially during the winter months. **As Clear as Pearl** is a machine learning pipeline that predicts Air Quality Index (AQI) up to 72 hours in advance, providing actionable health alerts.
+> Predicts Lahore's AQI for the next **3 days** (72 hours) using 4 ML/DL models, powered by a fully serverless CI/CD pipeline.
 
-##  Architecture
+---
+
+## Architecture
 
 ```mermaid
-graph TD
-    A[OpenAQ API] -->|Air Quality Data| C(Feature Pipeline)
-    B[Open-Meteo API] -->|Weather Data| C
-    C -->|Store Features| D[(Hopsworks Feature Store)]
-    D -->|Training Data| E(Training Pipeline)
-    E -->|XGBoost / LSTM / GRU| F[(Model Registry)]
-    D -->|Batch Features| G(Inference Pipeline / FastAPI)
-    F -->|Load Model| G
-    G -->|Serve Predictions| H[Streamlit Dashboard]
-    
-    subgraph GitHub Actions
-    C
-    E
-    end
+graph LR
+    A["OpenAQ API"] --> C["Feature Pipeline"]
+    B["Open-Meteo API"] --> C
+    C --> D["Google Cloud Storage<br/>(Feature Store)"]
+    C --> E["Local CSV Cache"]
+    D --> F["Training Pipeline"]
+    E --> F
+    F --> G["4 Models:<br/>Ridge · XGBoost · LSTM · GRU"]
+    G --> H["SHAP Explanations"]
+    G --> I["GCS Model Registry"]
+    G --> J["FastAPI Backend"]
+    J --> K["Streamlit Dashboard"]
 ```
 
-##  Features
+## 🚀 Live Demo
 
-- **Serverless Architecture**: Feature and training pipelines run automatically on GitHub Actions.
-- **Hopsworks Integration**: Centralized feature store and model registry.
-- **Multi-Model Comparison**: Evaluates XGBoost, LSTM, and GRU networks.
-- **Explainable AI**: SHAP integration for understanding feature importance.
-- **Stunning UI**: Premium dark-themed dashboard with glassmorphism and interactive Plotly charts.
-- **Health Alerts**: Context-aware recommendations based on predicted AQI levels.
+The dashboard is deployed on **Streamlit Community Cloud**:
+- Premium dark theme with glassmorphism UI
+- 5 interactive tabs: Live Dashboard, EDA, Model Comparison, SHAP, Alerts
 
-## Setup
+## Tech Stack
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yourusername/as-clear-as-pearl.git
-   cd as-clear-as-pearl
-   ```
+| Layer | Technology |
+|-------|-----------|
+| **ML Models** | Scikit-learn (Ridge), XGBoost, TensorFlow (LSTM, GRU) |
+| **Feature Store** | Google Cloud Storage (Vertex AI free tier) |
+| **Explainability** | SHAP (Linear, Tree, Gradient Explainers) |
+| **API** | FastAPI |
+| **Dashboard** | Streamlit + Plotly |
+| **CI/CD** | GitHub Actions (hourly features, daily training) |
+| **Data Sources** | OpenAQ (air quality), Open-Meteo (weather) |
 
-2. **Install dependencies:**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+## Quick Start
 
-3. **Configure Environment:**
-   Create a `.env` file in the root directory:
-   ```env
-   OPENAQ_API_KEY=your_openaq_key
-   HOPSWORKS_API_KEY=your_hopsworks_key
-   HOPSWORKS_PROJECT_NAME=your_project_name
-   ```
-
-##  Usage
-
-### Run Pipelines Locally
+### 1. Install
 ```bash
-# Extract features and push to Hopsworks
-python -m src.feature_pipeline
-
-# Train models and save to registry
-python -m src.training_pipeline
+pip install -r requirements-full.txt
 ```
 
-### Launch the App
-1. **Start the FastAPI Backend:**
-   ```bash
-   uvicorn src.api:app --reload --port 8000
-   ```
-
-2. **Start the Streamlit Dashboard:**
-   ```bash
-   streamlit run src/app.py
-   ```
-
-##  Project Structure
-
-```text
-as-clear-as-pearl/
-├── .github/
-│   └── workflows/
-│       ├── feature_pipeline.yml
-│       └── training_pipeline.yml
-├── data/                  # Local data storage
-├── notebooks/
-│   └── eda.py             # Exploratory Data Analysis
-├── src/
-│   ├── app.py             # Streamlit Dashboard
-│   ├── config.py          # Central configuration
-│   ├── feature_pipeline.py
-│   ├── training_pipeline.py
-│   └── api.py             # FastAPI backend
-├── documentation/
-│   ├── documentation.doc 
-└── README.md
+### 2. Configure `.env`
+```env
+OPENAQ_API_KEY=your_key
+GCP_PROJECT_ID=your_project        # optional — works without GCP
+GCS_BUCKET_NAME=your_bucket        # optional — falls back to local CSV
 ```
+
+### 3. Bootstrap data & train
+```bash
+python -m src.feature_pipeline --backfill --days 365
+python -m src.training_pipeline --use-local
+```
+
+### 4. Launch
+```bash
+streamlit run src/app.py
+```
+
+## 📂 Project Structure
+
+```
+src/
+├── config.py                  # Central config (AQI breakpoints, model params)
+├── data_fetcher.py            # OpenAQ + Open-Meteo API clients
+├── feature_engineering.py     # 30+ engineered features
+├── feature_pipeline.py        # Fetch → Engineer → Store (GCS/local)
+├── training_pipeline.py       # Train 4 models, compare, save
+├── inference_pipeline.py      # 72-hour AQI predictions
+├── explainability.py          # SHAP analysis for all models
+├── alerts.py                  # 6-level AQI alert system
+├── api.py                     # FastAPI (7 endpoints)
+├── app.py                     # Streamlit dashboard
+└── models/
+    ├── linear_regression_model.py
+    ├── xgboost_model.py
+    ├── lstm_model.py
+    └── gru_model.py
+```
+
+## 📖 Documentation
+
+See [DOCUMENTATION.md](documentation/DOCUMENTATION.md) for the complete 20-section walkthrough covering problem statement, architecture, feature engineering, model training, SHAP analysis, deployment, and requirement traceability.
+
+## License
+
+MIT

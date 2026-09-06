@@ -42,14 +42,20 @@ OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 # ============================================================
-# Hopsworks Configuration (user fills in .env)
+# Vertex AI / Google Cloud Storage Configuration
 # ============================================================
-HOPSWORKS_API_KEY = os.getenv("HOPSWORKS_API_KEY", "")
-HOPSWORKS_PROJECT_NAME = os.getenv("HOPSWORKS_PROJECT_NAME", "")
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
+GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "")
+GCP_REGION = os.getenv("GCP_REGION", "us-central1")
+# Path to your service account JSON key file
+GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+
+# Feature store paths in GCS
+GCS_FEATURES_PREFIX = "features/"
+GCS_MODELS_PREFIX = "models/"
+
+# Local identifiers
 FEATURE_GROUP_NAME = "lahore_aqi_features"
-FEATURE_GROUP_VERSION = 1
-FEATURE_VIEW_NAME = "lahore_aqi_fv"
-FEATURE_VIEW_VERSION = 1
 MODEL_NAME = "lahore_aqi_predictor"
 
 # ============================================================
@@ -58,7 +64,7 @@ MODEL_NAME = "lahore_aqi_predictor"
 HISTORICAL_DAYS = 365          # 1 year bootstrap
 FORECAST_HOURS = 72            # 3-day forecast
 SEQUENCE_LENGTH = 72           # 3-day lookback for LSTM/GRU
-OPENAQ_SEARCH_RADIUS_M = 25000  # 25 km
+OPENAQ_SEARCH_RADIUS_M = 25000  # OpenAQ v3 maximum radius
 
 # Open-Meteo hourly weather variables to fetch
 WEATHER_VARIABLES_HOURLY = [

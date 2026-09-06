@@ -1,22 +1,31 @@
-name: Hourly Feature Pipeline
+name: Feature Pipeline (Hourly)
 
 on:
   schedule:
     - cron: '0 * * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 jobs:
-  feature-ingestion:
+  run-feature-pipeline:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-      - run: pip install -r requirements.txt
-      - env:
+
+      - name: Install dependencies
+        run: pip install -r requirements-full.txt
+
+      - name: Run feature pipeline
+        env:
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
-          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
-          HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}
-        run: python -m src.feature_pipeline
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-key.json
+        run: |
+          echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' > /tmp/gcp-key.json
+          python -m src.feature_pipeline

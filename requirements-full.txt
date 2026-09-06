@@ -1,6 +1,6 @@
 # Core
 pandas>=2.0.0
-numpy>=1.24.0
+numpy>=1.24.0,<2
 python-dotenv>=1.0.0
 requests>=2.31.0
 httpx>=0.25.0
@@ -13,23 +13,9 @@ xgboost>=2.0.0
 # Deep Learning
 tensorflow>=2.15.0
 
-# Feature Store
-# ---------------------------------------------------------------
-# WINDOWS USERS: hopsworks depends on `twofish`, a C extension
-# that requires compilation. If `pip install hopsworks` fails,
-# use ONE of these fixes:
-#
-#   FIX 1 (Recommended — Conda):
-#     conda install twofish
-#     pip install hopsworks[python]
-#
-#   FIX 2 (pip only — install MS Build Tools first):
-#     1. Download Visual C++ Build Tools:
-#        https://visualstudio.microsoft.com/visual-cpp-build-tools/
-#     2. Select "Desktop development with C++" during install
-#     3. Restart terminal, then: pip install hopsworks
-# ---------------------------------------------------------------
-hopsworks>=3.7.0
+# Google Cloud (Vertex AI free tier — feature store + model storage)
+google-cloud-storage>=2.14.0
+google-cloud-aiplatform>=1.38.0
 
 # Explainability
 shap>=0.44.0

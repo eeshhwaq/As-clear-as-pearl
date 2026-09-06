@@ -25,8 +25,11 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
             'so2': row.get('so2'),
             'co': row.get('co')
         }
+        valid_vals = [v for v in concentrations.values() if v is not None and pd.notna(v)]
+        if not valid_vals:
+            return np.nan
         aqi_val, _ = calculate_overall_aqi(concentrations)
-        return aqi_val if aqi_val > 0 else np.nan
+        return float(aqi_val)
 
     df['aqi'] = df.apply(row_aqi, axis=1)
     

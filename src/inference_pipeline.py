@@ -4,7 +4,6 @@ Handles loading trained models and making real predictions.
 """
 import pandas as pd
 import numpy as np
-import hopsworks
 import logging
 import joblib
 from pathlib import Path
@@ -13,8 +12,9 @@ from datetime import datetime, timedelta
 from src.config import (
     DATA_DIR,
     MODELS_DIR,
-    HOPSWORKS_PROJECT_NAME,
-    HOPSWORKS_API_KEY,
+    GCP_PROJECT_ID,
+    GCS_BUCKET_NAME,
+    GCS_MODELS_PREFIX,
     MODEL_NAME,
     WEATHER_VARIABLES_HOURLY,
     WEATHER_RENAME,
@@ -34,21 +34,25 @@ logger = logging.getLogger(__name__)
 
 
 def load_best_model():
-    """Load the best model from Hopsworks or local fallback."""
-    # Try Hopsworks first
-    if HOPSWORKS_API_KEY and HOPSWORKS_PROJECT_NAME:
+    """Load the best model from GCS or local fallback."""
+    # Try GCS first
+    if GCP_PROJECT_ID and GCS_BUCKET_NAME:
         try:
-            project = hopsworks.login(
-                project=HOPSWORKS_PROJECT_NAME,
-                api_key_value=HOPSWORKS_API_KEY,
-            )
-            mr = project.get_model_registry()
-            best_model = mr.get_model("lahore_aqi_best_model", version=1)
-            model_dir = best_model.download()
-            for f in Path(model_dir).glob("*.pkl"):
-                return joblib.load(f)
+            from google.cloud import storage
+
+            client = storage.Client(project=GCP_PROJECT_ID)
+            bucket = client.bucket(GCS_BUCKET_NAME)
+
+            for name in ["XGBoost", "LSTM", "GRU", "LinearRegression"]:
+                blob_name = f"{GCS_MODELS_PREFIX}{name}.pkl"
+                blob = bucket.blob(blob_name)
+                if blob.exists():
+                    local_path = MODELS_DIR / f"{name}.pkl"
+                    blob.download_to_filename(str(local_path))
+                    logger.info(f"Downloaded {name} from GCS.")
+                    return joblib.load(local_path)
         except Exception as e:
-            logger.warning(f"Failed to load from Hopsworks: {e}. Trying local.")
+            logger.warning(f"Failed to load from GCS: {e}. Trying local.")
 
     # Local fallback — prefer XGBoost > LSTM > GRU > LR
     for name in ["XGBoost", "LSTM", "GRU", "LinearRegression"]:

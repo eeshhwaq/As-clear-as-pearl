@@ -19,7 +19,7 @@
 11. [FastAPI Backend — REST API](#11-fastapi-backend--rest-api)
 12. [Streamlit Dashboard — Interactive Frontend](#12-streamlit-dashboard--interactive-frontend)
 13. [CI/CD Automation — GitHub Actions](#13-cicd-automation--github-actions)
-14. [Hopsworks Feature Store & Model Registry](#14-hopsworks-feature-store--model-registry)
+14. [Vertex AI Feature Store — Google Cloud Storage](#14-vertex-ai-feature-store--google-cloud-storage)
 15. [Exploratory Data Analysis (EDA)](#15-exploratory-data-analysis-eda)
 16. [Project File Map — What Lives Where](#16-project-file-map--what-lives-where)
 17. [How to Run the Project](#17-how-to-run-the-project)
@@ -98,7 +98,7 @@ graph TB
 
     subgraph "Storage Layer"
         CSV["Local CSV Cache"]
-        HW_FS["Hopsworks Feature Store"]
+        GCS_FS["Google Cloud Storage (Vertex AI)"]
     end
 
     subgraph "Training Pipeline - Runs Daily via GitHub Actions"
@@ -108,7 +108,7 @@ graph TB
         LSTM_M["LSTM"]
         GRU_M["GRU"]
         SHAP_M["SHAP Analysis"]
-        HW_MR["Hopsworks Model Registry"]
+        GCS_MR["GCS Model Registry"]
     end
 
     subgraph "Serving Layer"
@@ -141,7 +141,7 @@ graph TB
 |------|-------------|------|-------|
 | 1. Fetch | Raw pollutant concentrations + weather readings pulled from APIs | Every hour | `data_fetcher.py` |
 | 2. Engineer | 30+ features generated (AQI, time patterns, rolling stats, derived) | Every hour | `feature_engineering.py` |
-| 3. Store | Engineered features saved locally + pushed to Hopsworks | Every hour | `feature_pipeline.py` |
+| 3. Store | Engineered features saved locally + pushed to GCS (Vertex AI) | Every hour | `feature_pipeline.py` |
 | 4. Train | All 4 models trained on latest data, compared, and best is saved | Every day | `training_pipeline.py` |
 | 5. Explain | SHAP analysis run on all models, plots generated | Every day | `explainability.py` |
 | 6. Predict | Best model generates 72-hour AQI forecast | On demand | `inference_pipeline.py` |
@@ -160,7 +160,7 @@ Every technology in the stack was chosen deliberately:
 | **Scikit-learn** | Linear Regression model + preprocessing | Gold standard for classical ML. Ridge regression + StandardScaler pipeline. |
 | **XGBoost** | Gradient boosting model | Best-in-class for tabular data. Handles missing values, feature importance built-in. |
 | **TensorFlow / Keras** | LSTM and GRU models | Production-grade deep learning framework. Keras API makes sequence models clean and readable. |
-| **Hopsworks** (Free Tier) | Feature Store + Model Registry | Centralized feature management prevents training-serving skew. Model versioning. Free tier = serverless-friendly. **No raw data stored** (only engineered features) to stay within free tier limits. |
+| **Vertex AI / GCS** (Free Tier) | Feature Store + Model Registry | Centralized feature management prevents training-serving skew. Model versioning. Free tier = serverless-friendly. **No raw data stored** (only engineered features) to stay within free tier limits. |
 | **GitHub Actions** | CI/CD pipeline automation | Free for public repos. Cron scheduling for hourly/daily pipelines. Zero infrastructure to manage. |
 | **Streamlit** | Interactive dashboard frontend | Rapid UI development. Rich widget library. Built-in caching. Free cloud deployment available. |
 | **FastAPI** | REST API backend | Async-capable, auto-generated docs (Swagger), type-validated endpoints. |
@@ -173,7 +173,7 @@ Every technology in the stack was chosen deliberately:
 The entire stack is **100% serverless** — no servers to provision, maintain, or pay for:
 
 - **Compute**: GitHub Actions runners (free) execute the pipelines
-- **Storage**: Hopsworks serverless (free tier) stores features and models
+- **Storage**: Google Cloud Storage (always-free 5GB tier) stores features and models
 - **API**: FastAPI deployed to a serverless platform
 - **Dashboard**: Streamlit deploys to Streamlit Community Cloud (free)
 
@@ -365,7 +365,7 @@ Input -> GRU(64) -> Dropout(20%) -> GRU(32) -> Dropout(20%) -> Dense(16) -> Dens
 
 The `run_training_pipeline()` function orchestrates the entire training process:
 
-1. **Load Data** — From Hopsworks Feature Store, falling back to local CSV
+1. **Load Data** — From Google Cloud Storage (Vertex AI), falling back to local CSV
 2. **Chronological Split** — 70% train / 15% validation / 15% test. **No random shuffling** — this is critical for time series to prevent data leakage (future information leaking into training data)
 3. **Train All 4 Models** — Each model uses the same train/val/test split
 4. **Evaluate** — Every model is scored on the test set using four metrics:
@@ -378,7 +378,7 @@ The `run_training_pipeline()` function orchestrates the entire training process:
 | **R-squared** (Coefficient of Determination) | How much variance the model explains | Closer to 1.0 = better |
 
 5. **Compare** — Models sorted by RMSE. Results saved to `data/model_comparison.csv`
-6. **Save** — All models saved locally; best model uploaded to Hopsworks Model Registry
+6. **Save** — All models saved locally; best model uploaded to GCS Model Registry
 7. **Explain** — SHAP analysis run on all 4 models (see next section)
 
 ---
@@ -546,7 +546,7 @@ The dashboard is the **user-facing heart** of the system — a premium, dark-the
 The dashboard **works under all conditions**:
 - Without FastAPI running -> falls back to direct Python imports
 - Without trained models -> shows informative placeholder messages
-- Without Hopsworks -> uses local CSV data
+- Without GCS/Vertex AI -> uses local CSV data
 - With partial data -> displays whatever is available
 
 ---
@@ -563,8 +563,8 @@ Two GitHub Actions workflows automate the entire pipeline:
 
 - **Schedule**: `cron: '0 * * * *'` — runs at the top of every hour
 - **Also**: `workflow_dispatch` — can be triggered manually from the GitHub UI
-- **What it does**: Fetches the latest air quality + weather data, engineers features, and pushes to Hopsworks
-- **Environment**: Ubuntu, Python 3.11, with secrets for `OPENAQ_API_KEY`, `HOPSWORKS_API_KEY`, `HOPSWORKS_PROJECT_NAME`
+- **What it does**: Fetches the latest air quality + weather data, engineers features, and pushes to GCS
+- **Environment**: Ubuntu, Python 3.11, with secrets for `OPENAQ_API_KEY`, `GCP_PROJECT_ID`, `GCS_BUCKET_NAME`, `GCP_SERVICE_ACCOUNT_KEY`
 
 ### Daily Training Pipeline
 
@@ -572,18 +572,20 @@ Two GitHub Actions workflows automate the entire pipeline:
 
 - **Schedule**: `cron: '0 0 * * *'` — runs at midnight UTC every day
 - **Also**: `workflow_dispatch` — can be triggered manually
-- **What it does**: Loads all accumulated features, trains all 4 models, evaluates them, runs SHAP analysis, and uploads the best model to Hopsworks
+- **What it does**: Loads all accumulated features, trains all 4 models, evaluates them, runs SHAP analysis, and uploads models to GCS
 
 ### Setting Up the Secrets
 
 In your GitHub repository: **Settings -> Secrets and variables -> Actions -> New repository secret**:
 - `OPENAQ_API_KEY` — your OpenAQ API key
-- `HOPSWORKS_API_KEY` — your Hopsworks API key
-- `HOPSWORKS_PROJECT_NAME` — your Hopsworks project name
+- `GCP_PROJECT_ID` — your Google Cloud project ID
+- `GCS_BUCKET_NAME` — your GCS bucket name
+- `GCP_REGION` — your GCP region (default: `us-central1`)
+- `GCP_SERVICE_ACCOUNT_KEY` — your entire service account JSON key (paste the full JSON content)
 
 ---
 
-# 14. Hopsworks Feature Store & Model Registry
+# 14. Vertex AI Feature Store — Google Cloud Storage
 
 > **Integration in**: `feature_pipeline.py` and `training_pipeline.py`
 
@@ -591,30 +593,40 @@ In your GitHub repository: **Settings -> Secrets and variables -> Actions -> New
 
 Without a feature store, the same feature engineering code must run in two places (training and serving), risking **training-serving skew** — where the model sees slightly different features during prediction than during training, causing silent accuracy degradation.
 
-Hopsworks solves this by serving as a **single source of truth** for features.
+Google Cloud Storage (GCS), used as part of the **Vertex AI free tier**, solves this by serving as a **single source of truth** for features and models.
 
-### What's Stored in Hopsworks
+### What's Stored in GCS
 
-> **IMPORTANT**: **Only engineered features are stored** — NOT raw API data. This is critical for staying within the free tier limits.
+> **IMPORTANT**: **Only engineered features are stored** — NOT raw API data. This keeps storage minimal and within the always-free 5GB tier.
 
-**Feature Group**: `lahore_aqi_features` (version 1)
-- Primary key: `timestamp`
-- Event time: `timestamp`
+**Feature Store** (`gs://your-bucket/features/lahore_aqi_features.parquet`):
+- Format: Parquet (compact, columnar, fast)
 - Contains: all 30+ engineered features + the AQI target variable
-- Updated: every hour by the feature pipeline
+- Deduplication: on `timestamp` column
+- Updated: every hour by the feature pipeline (append mode)
 
-**Model Registry**: `lahore_aqi_best_model`
-- Stores: the best-performing model after each daily training run
-- Metadata includes: evaluation metrics (MAE, RMSE, MAPE, R-squared), description, model type
+**Model Registry** (`gs://your-bucket/models/`):
+- Stores: all 4 trained models as `.pkl` files + `model_comparison.csv`
+- Updated: daily by the training pipeline
+- Each model (LinearRegression, XGBoost, LSTM, GRU) stored separately
+
+### Why GCS Instead of Hopsworks?
+
+| Factor | Hopsworks | GCS (Vertex AI) |
+|--------|-----------|-----------------|
+| **Free tier** | Limited, `twofish` C dependency breaks on Windows | Always-free 5GB, works everywhere |
+| **Installation** | Fails on Windows due to C compilation | `pip install google-cloud-storage` — works on all platforms |
+| **Authentication** | API key + project name | Service account JSON key |
+| **Reliability** | Third-party dependency issues | Google infrastructure |
 
 ### Graceful Fallback
 
-If Hopsworks credentials are not configured or the service is unavailable:
-- Feature pipeline -> saves to `data/engineered_features.csv` locally
-- Training pipeline -> loads from local CSV
-- Inference pipeline -> loads models from `saved_models/` directory
+If GCP credentials are not configured or the service is unavailable:
+- Feature pipeline → saves to `data/engineered_features.csv` locally
+- Training pipeline → loads from local CSV
+- Inference pipeline → loads models from `saved_models/` directory
 
-**The system is fully functional without Hopsworks** — it simply uses local files instead.
+**The system is fully functional without GCS** — it simply uses local files instead.
 
 ---
 
@@ -716,14 +728,15 @@ cd C:\Users\Easha\.gemini\antigravity\scratch\as-clear-as-pearl
 pip install -r requirements-full.txt
 ```
 
-> **⚠️ Windows Users**: If `hopsworks` fails to install due to `twofish`, see [Section 18: Troubleshooting](#18-troubleshooting--common-issues--fixes) below.
+> **Note**: Google Cloud Storage is optional. The system works entirely locally without GCS configured.
 
 ### 3. Configure API keys
-Open `.env` and verify:
+Open `.env` and fill in:
 ```
 OPENAQ_API_KEY=your_openaq_key
-HOPSWORKS_API_KEY=your_hopsworks_key
-HOPSWORKS_PROJECT_NAME=your_project
+GCP_PROJECT_ID=your_gcp_project_id
+GCS_BUCKET_NAME=your_bucket_name
+GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account-key.json
 ```
 
 ### 4. Bootstrap historical data (one-time, approximately 20 minutes)
@@ -760,37 +773,26 @@ Generates 10 analytical plots in `data/eda_plots/`.
 
 # 18. Troubleshooting — Common Issues & Fixes
 
-## 18.1 Hopsworks `twofish` Build Error (Windows)
+## 18.1 Google Cloud Storage Authentication Issues
 
 **Symptom:**
 ```
-error: Microsoft Visual C++ 14.0 or greater is required.
-  ERROR: Failed building wheel for twofish
+google.auth.exceptions.DefaultCredentialsError: Could not automatically determine credentials.
 ```
 
-**Cause:** Hopsworks depends on `twofish`, a C extension that requires a C compiler. Windows doesn't ship with one by default.
+**Cause:** GCS requires a service account JSON key for authentication.
 
-**Fix 1 — Conda (Recommended, fastest)**
-```bash
-# Create a conda environment
-conda create -n pearl python=3.11
-conda activate pearl
-
-# Install twofish via conda (pre-compiled binary, no compiler needed)
-conda install twofish
-
-# Now install everything else via pip
-pip install -r requirements-full.txt
+**Fix:**
+1. Go to [Google Cloud Console](https://console.cloud.google.com) → IAM & Admin → Service Accounts
+2. Create a service account with **Storage Object Admin** role
+3. Download the JSON key file
+4. Set the path in your `.env`:
+```
+GOOGLE_APPLICATION_CREDENTIALS=path/to/your-key.json
 ```
 
-**Fix 2 — Install Microsoft C++ Build Tools**
-1. Download **[Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)**
-2. Run the installer → select **"Desktop development with C++"**
-3. Restart your terminal
-4. Run `pip install -r requirements-full.txt` again
-
-**Fix 3 — Skip Hopsworks entirely**
-If you don't need the feature store (local-only mode), remove `hopsworks` from `requirements-full.txt`. The system automatically falls back to local CSV files when Hopsworks is not available.
+**Skip GCS entirely:**
+If you don't need cloud storage (local-only mode), leave `GCP_PROJECT_ID` and `GCS_BUCKET_NAME` empty in `.env`. The system automatically falls back to local CSV files.
 
 ## 18.2 TensorFlow Installation Issues
 
@@ -834,7 +836,7 @@ The project uses **two requirements files**:
 | File | Purpose | Used By |
 |------|---------|---------|
 | `requirements.txt` | **Lightweight** — only dashboard dependencies (streamlit, pandas, plotly, etc.) | Streamlit Cloud |
-| `requirements-full.txt` | **Complete** — includes TensorFlow, XGBoost, scikit-learn, hopsworks, SHAP | Local development, GitHub Actions |
+| `requirements-full.txt` | **Complete** — includes TensorFlow, XGBoost, scikit-learn, google-cloud-storage, google-cloud-aiplatform, SHAP | Local development, GitHub Actions |
 
 This split is critical because Streamlit Cloud has limited memory. The dashboard only reads CSV files and displays plots — it doesn't need TensorFlow or XGBoost at runtime.
 
@@ -873,8 +875,8 @@ gatherUsageStats = false
 5. Click **"Advanced settings"** → paste secrets:
 ```toml
 OPENAQ_API_KEY = "your_openaq_key"
-HOPSWORKS_API_KEY = "your_hopsworks_key"
-HOPSWORKS_PROJECT_NAME = "your_project_name"
+GCP_PROJECT_ID = "your_gcp_project_id"
+GCS_BUCKET_NAME = "your_bucket_name"
 ```
 
 6. Click **Deploy!**
@@ -896,7 +898,7 @@ Every `git push` to the `main` branch automatically triggers a redeployment on S
 GitHub Actions (hourly/daily)
     |
     v
-Hopsworks Feature Store + Model Registry
+Google Cloud Storage (Vertex AI) + Model Registry
     |
     v
 Streamlit Community Cloud (dashboard)
@@ -915,11 +917,11 @@ Every requirement from the original project brief, mapped to where and how it wa
 | # | Requirement | Status | Implementation |
 |---|------------|--------|---------------|
 | 1 | Predict AQI in Lahore for next 3 days | Done | `inference_pipeline.py` — 72-hour predictions using weather forecast + trained models |
-| 2 | 100% serverless stack | Done | GitHub Actions (compute) + Hopsworks (storage) + Streamlit (UI) — no servers |
+| 2 | 100% serverless stack | Done | GitHub Actions (compute) + Vertex AI/GCS (storage) + Streamlit (UI) — no servers |
 | 3 | Python | Done | Entire codebase is Python |
 | 4 | Scikit-learn | Done | `linear_regression_model.py` uses Ridge + StandardScaler Pipeline |
 | 5 | TensorFlow | Done | `lstm_model.py` and `gru_model.py` use TensorFlow/Keras Sequential API |
-| 6 | Hopsworks (free tier only) | Done | Feature Store + Model Registry integration; **only engineered features stored** (no raw data) |
+| 6 | Vertex AI / GCS (free tier only) | Done | Feature Store + Model Registry integration; **only engineered features stored** (no raw data) |
 | 7 | GitHub Actions | Done | `feature_pipeline.yml` (hourly) + `training_pipeline.yml` (daily) |
 | 8 | Streamlit | Done | `app.py` — 5-tab premium dashboard with glassmorphism design |
 | 9 | FastAPI | Done | `api.py` — 7 REST endpoints with CORS, caching, lazy loading |
@@ -933,7 +935,7 @@ Every requirement from the original project brief, mapped to where and how it wa
 | 17 | LSTM model | Done | `lstm_model.py` — 2-layer LSTM with dropout, EarlyStopping, ReduceLROnPlateau |
 | 18 | 4th deep learning model (GRU) | Done | `gru_model.py` — 2-layer GRU, fewer params than LSTM |
 | 19 | Show forecast on web app | Done | Dashboard Tab 1: 3-day forecast chart with AQI level zones |
-| 20 | Feature store for storing/fetching | Done | Hopsworks Feature Group `lahore_aqi_features` + Feature View |
+| 20 | Feature store for storing/fetching | Done | GCS feature bucket `lahore_aqi_features` + Feature View |
 | 21 | CI/CD hourly feature script | Done | `feature_pipeline.yml` — cron: '0 * * * *' |
 | 22 | CI/CD daily training script | Done | `training_pipeline.yml` — cron: '0 0 * * *' |
 | 23 | EDA to identify trends | Done | `notebooks/eda.py` (10 plots) + Dashboard Tab 2 (interactive EDA) |
@@ -941,10 +943,10 @@ Every requirement from the original project brief, mapped to where and how it wa
 | 25 | SHAP for feature importance | Done | `explainability.py` — summary, beeswarm, dependence plots + Dashboard Tab 4 |
 | 26 | Alerts for hazardous AQI | Done | `alerts.py` — 6-level system with health recommendations + Dashboard Tab 5 |
 | 27 | End-to-end prediction system | Done | Full pipeline: API -> fetch -> engineer -> store -> train -> predict -> serve -> display |
-| 28 | Scalable, automated pipeline | Done | GitHub Actions cron + Hopsworks feature store = zero-touch automation |
+| 28 | Scalable, automated pipeline | Done | GitHub Actions cron + Google Cloud Storage (Vertex AI) = zero-touch automation |
 | 29 | Interactive dashboard (real-time + forecast) | Done | Streamlit 5-tab dashboard with Plotly charts, alerts, SHAP, and model comparison |
 | 30 | Start with 1 year data | Done | `--backfill --days 365` bootstraps 1 year of historical data |
-| 31 | No raw data in Hopsworks | Done | Only engineered features stored in Feature Group; raw data stays in local CSV cache |
+| 31 | No raw data in GCS | Done | Only engineered features stored in Feature Group; raw data stays in local CSV cache |
 
 ---
 

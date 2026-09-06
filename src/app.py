@@ -183,7 +183,7 @@ with st.sidebar:
     date_range = st.date_input("Historical View Range", [datetime.date.today() - datetime.timedelta(days=30), datetime.date.today()])
     
     st.markdown("### About")
-    st.info("Serverless AQI prediction system for Lahore, Pakistan. Built with Streamlit, FastAPI, Hopsworks, and GitHub Actions.")
+    st.info("Serverless AQI prediction system for Lahore, Pakistan. Built with Streamlit, FastAPI, Vertex AI, and GitHub Actions.")
 
 # Main Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
